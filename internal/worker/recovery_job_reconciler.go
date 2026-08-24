@@ -40,7 +40,6 @@ func (r *RecoveryJobExpiryReconciler) Reconcile(ctx context.Context, now time.Ti
 	items, err := r.repo.ExpiringRecoveryJobs(ctx, now, 100)
 	if err != nil {
 		r.metrics.RecordFailure()
-		r.metrics.RecordFailedDue0004(len(items))
 		return err
 	}
 	r.metrics.RecordDue(len(items))
