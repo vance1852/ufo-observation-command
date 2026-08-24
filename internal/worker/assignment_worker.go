@@ -42,9 +42,8 @@ func (w *AssignmentWorker) Run(ctx context.Context) error {
 			w.metrics.RecordRun()
 			if err != nil && ctx.Err() == nil {
 				w.metrics.RecordFailure()
-				w.metrics.RecordDue(count)
-				w.logger.Error("assignment activation failed", "error", err)
-			} else {
+				w.logger.Error("assignment activation failed", "error", err, "unprocessed", count)
+			} else if err == nil {
 				w.metrics.RecordDue(count)
 			}
 		}
