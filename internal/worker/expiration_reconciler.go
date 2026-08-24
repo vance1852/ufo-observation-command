@@ -39,8 +39,10 @@ func (r *ExpirationReconciler) Reconcile(ctx context.Context, now time.Time) err
 	r.metrics.RecordRun()
 	result, err := r.source.MarkExpiredRecoveryJobs(ctx, now, 100)
 	if err != nil {
+		// The reclaim transaction rolled back, so no recovery job was durably
+		// marked and no audit credential exists. Record only the failed run;
+		// never advance the due counter on the error path.
 		r.metrics.RecordFailure()
-		r.metrics.RecordFailedDue0003(result.Marked)
 		return err
 	}
 	r.metrics.RecordDue(result.Marked)
