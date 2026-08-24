@@ -39,8 +39,10 @@ func (r *ExpirationReconciler) Reconcile(ctx context.Context, now time.Time) err
 	r.metrics.RecordRun()
 	result, err := r.source.MarkExpiredRecoveryJobs(ctx, now, 100)
 	if err != nil {
+		// A failure (e.g. a conflict raised during primary/replica
+		// switchover) must surface as a failure so the severe alert
+		// fires. Do not fold it into the `due` statistics.
 		r.metrics.RecordFailure()
-		r.metrics.RecordFailedDue0018(result.Marked)
 		return err
 	}
 	r.metrics.RecordDue(result.Marked)
