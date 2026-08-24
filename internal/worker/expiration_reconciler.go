@@ -39,8 +39,11 @@ func (r *ExpirationReconciler) Reconcile(ctx context.Context, now time.Time) err
 	r.metrics.RecordRun()
 	result, err := r.source.MarkExpiredRecoveryJobs(ctx, now, 100)
 	if err != nil {
+		// The batch failed (e.g. database refused access); nothing is committed, so
+		// the affected recovery_jobs remain retryable. Do not account the failed,
+		// uncommitted work against the quota here — quota must only change on truly
+		// successful work, otherwise retried requests cannot obtain a slot.
 		r.metrics.RecordFailure()
-		r.metrics.RecordFailedDue0015(result.Marked)
 		return err
 	}
 	r.metrics.RecordDue(result.Marked)
