@@ -41,10 +41,13 @@ func (w *AssignmentWorker) Run(ctx context.Context) error {
 			count, err := w.source.ActivateDue(ctx, time.Now().UTC(), 100)
 			w.metrics.RecordRun()
 			if err != nil && ctx.Err() == nil {
+				// A failed round did not confirm any activations: lock waits and
+				// partial counts must not advance the recovered-counter, otherwise
+				// repeated retries of the same round double-count and the daily
+				// report credits failed attempts as real recoveries.
 				w.metrics.RecordFailure()
-				w.metrics.RecordFailedDue0008(count)
 				w.logger.Error("assignment activation failed", "error", err)
-			} else {
+			} else if err == nil {
 				w.metrics.RecordDue(count)
 			}
 		}

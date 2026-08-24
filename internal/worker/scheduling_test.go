@@ -45,3 +45,49 @@ func TestMetricsRecordCounters(t *testing.T) {
 		t.Fatalf("metrics=%d,%d,%d", runs, failures, due)
 	}
 }
+
+type assignmentSourceFunc func(context.Context, time.Time, int) (int, error)
+
+func (f assignmentSourceFunc) ActivateDue(ctx context.Context, now time.Time, limit int) (int, error) {
+	return f(ctx, now, limit)
+}
+
+func TestAssignmentWorkerFailedRoundDoesNotAdvanceDueCounter(t *testing.T) {
+	calls := 0
+	source := assignmentSourceFunc(func(context.Context, time.Time, int) (int, error) {
+		calls++
+		// A cold-water lease renewal hits a lock wait: the round reports a
+		// partial count alongside an error and must not count as recovered.
+		return 5, errors.New("lock wait timeout exceeded")
+	})
+	metrics := &Metrics{}
+	worker := NewAssignmentWorker(source, time.Millisecond, nil, metrics)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	_ = worker.Run(ctx)
+	if calls == 0 {
+		t.Fatal("source was never invoked")
+	}
+	runs, failures, due := metrics.Snapshot()
+	if failures != int64(calls) {
+		t.Fatalf("failures=%d calls=%d", failures, calls)
+	}
+	if due != 0 {
+		t.Fatalf("failed round advanced due counter: runs=%d failures=%d due=%d", runs, failures, due)
+	}
+}
+
+func TestAssignmentWorkerConfirmedSuccessAdvancesDueCounterOnce(t *testing.T) {
+	source := assignmentSourceFunc(func(context.Context, time.Time, int) (int, error) {
+		return 3, nil
+	})
+	metrics := &Metrics{}
+	worker := NewAssignmentWorker(source, time.Millisecond, nil, metrics)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	_ = worker.Run(ctx)
+	runs, failures, due := metrics.Snapshot()
+	if runs < 1 || failures != 0 || due != 3*runs {
+		t.Fatalf("runs=%d failures=%d due=%d", runs, failures, due)
+	}
+}
