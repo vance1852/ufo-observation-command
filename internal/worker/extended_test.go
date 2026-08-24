@@ -62,6 +62,46 @@ func TestOutcomeLogCopiesRecords(t *testing.T) {
 	}
 }
 
+type failingSource struct {
+	count int
+	err   error
+	done  chan struct{}
+}
+
+func (f *failingSource) ActivateDue(context.Context, time.Time, int) (int, error) {
+	defer close(f.done)
+	return f.count, f.err
+}
+
+// TestAssignmentFailureDoesNotCountAsDue guards the recovery-task processing
+// chain: when the backend fails to persist (for example a brief database
+// disconnect during array recovery), the unpersisted results must not be
+// folded into the "due/completed" counter that the monitoring surface reads,
+// or on-call staff will believe the backlog has cleared.
+func TestAssignmentFailureDoesNotCountAsDue(t *testing.T) {
+	metrics := &Metrics{}
+	source := &failingSource{count: 3, err: errors.New("database unavailable"), done: make(chan struct{})}
+	worker := NewAssignmentWorker(source, time.Hour, nil, metrics)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = worker.Run(ctx) }()
+
+	<-source.done
+	cancel()
+
+	runs, failures, due := metrics.Snapshot()
+	if due != 0 {
+		t.Fatalf("unpersisted results counted as completed: due=%d", due)
+	}
+	if runs != 1 || failures != 1 {
+		t.Fatalf("runs=%d failures=%d", runs, failures)
+	}
+	if metrics.Failed() != 3 {
+		t.Fatalf("failed=%d want 3", metrics.Failed())
+	}
+}
+
 func TestHealthNeedsRecentRun(t *testing.T) {
 	var health Health
 	health.Start()
