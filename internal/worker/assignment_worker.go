@@ -41,8 +41,13 @@ func (w *AssignmentWorker) Run(ctx context.Context) error {
 			count, err := w.source.ActivateDue(ctx, time.Now().UTC(), 100)
 			w.metrics.RecordRun()
 			if err != nil && ctx.Err() == nil {
+				// A downstream failure (for example a timeout while the buoy
+				// group was stopping) is an abnormal batch: record it as a
+				// failure and isolate it from the statistics baseline so the
+				// real submission volume can still be verified next round.
 				w.metrics.RecordFailure()
-				w.metrics.RecordFailedDue0029(count)
+				w.metrics.RecordFailedDue(count)
+				w.metrics.ReestablishBaseline()
 				w.logger.Error("assignment activation failed", "error", err)
 			} else {
 				w.metrics.RecordDue(count)

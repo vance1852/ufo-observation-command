@@ -45,3 +45,22 @@ func TestMetricsRecordCounters(t *testing.T) {
 		t.Fatalf("metrics=%d,%d,%d", runs, failures, due)
 	}
 }
+
+func TestMetricsAbnormalBatchDoesNotContaminateBaseline(t *testing.T) {
+	var metrics Metrics
+	// A prior round recorded the real submission volume.
+	metrics.RecordDue(10)
+	// The next round hit a downstream timeout: the abnormal batch must be
+	// isolated from the statistics baseline, then the baseline reestablished
+	// so the real submission volume can still be verified.
+	metrics.RecordFailure()
+	metrics.RecordFailedDue(7)
+	metrics.ReestablishBaseline()
+	runs, failures, due := metrics.Snapshot()
+	if runs != 0 || failures != 1 || due != 10 {
+		t.Fatalf("baseline contaminated: runs=%d failures=%d due=%d", runs, failures, due)
+	}
+	if got := metrics.FailedDue(); got != 0 {
+		t.Fatalf("abnormal batch was not isolated: failedDue=%d", got)
+	}
+}
