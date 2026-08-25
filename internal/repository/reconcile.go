@@ -12,6 +12,12 @@ type ReconcileResult struct {
 	Scanned int
 	Marked  int
 	Failed  int
+	// Skipped counts scanned candidates that were not confirmed as execution
+	// results because a concurrent site (e.g. a delayed replica catching up)
+	// transitioned them first. Skipped candidates are neither successes nor
+	// failures: separating them keeps cross-site aggregation from being
+	// distorted and prevents prematurely consuming capacity.
+	Skipped int
 }
 
 func (p *Postgres) MarkExpiredRecoveryJobs(ctx context.Context, now time.Time, limit int) (ReconcileResult, error) {
@@ -47,7 +53,12 @@ func (p *Postgres) MarkExpiredRecoveryJobs(ctx context.Context, now time.Time, l
 			return ReconcileResult{}, fmt.Errorf("mark task %s expired: %w", id, err)
 		}
 		if updated.RowsAffected() != 1 {
-			result.Failed++
+			// The candidate was scanned but could not be confirmed as an
+			// execution result: a concurrent site (for example a delayed
+			// replica catching up) transitioned it first. Count it as skipped,
+			// not failed, so cross-site aggregation is not distorted and the
+			// capacity metric is not prematurely consumed.
+			result.Skipped++
 			continue
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO audit_events(id,request_id,object_type,object_id,action,outcome,detail) VALUES ($1,$2,'task',$3,'expire','success','{}'::jsonb)`, uuid.NewString(), "worker:task-expiration", id); err != nil {

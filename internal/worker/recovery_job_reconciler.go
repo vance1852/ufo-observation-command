@@ -39,10 +39,17 @@ func (r *RecoveryJobExpiryReconciler) Reconcile(ctx context.Context, now time.Ti
 	r.metrics.RecordRun()
 	items, err := r.repo.ExpiringRecoveryJobs(ctx, now, 100)
 	if err != nil {
+		// Anomaly: scanned candidates are unconfirmed, so do not promote any
+		// of them into the due/success metric; the run is a single failure.
 		r.metrics.RecordFailure()
 		return err
 	}
-	r.metrics.RecordDue(len(items))
+	// Distinguish scanned candidates (unconfirmed inputs) from execution
+	// results. This reconciler only surfaces candidates, so none are confirmed
+	// results; recording len(items) as due would miscount unconfirmed
+	// candidates into the success metric and distort cross-site aggregation.
+	r.metrics.RecordScanned(len(items))
+	r.metrics.RecordDue(0)
 	for _, item := range items {
 		r.log.Warn("task is near expiry", "recovery_job_id", item.ID, "task_code", item.TaskCode, "expires_at", item.ExpiresAt)
 	}

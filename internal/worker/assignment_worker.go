@@ -41,7 +41,10 @@ func (w *AssignmentWorker) Run(ctx context.Context) error {
 			count, err := w.source.ActivateDue(ctx, time.Now().UTC(), 100)
 			w.metrics.RecordRun()
 			if err != nil && ctx.Err() == nil {
-				w.metrics.RecordFailure()
+				// On anomaly (e.g. delayed replica / conflict) the scanned
+				// candidates are unconfirmed: record them as scanned, not as
+				// due, so the success/capacity metric is not prematurely
+				// consumed. RecordFailedDue0014 accounts the single failure.
 				w.metrics.RecordFailedDue0014(count)
 				w.logger.Error("assignment activation failed", "error", err)
 			} else {
