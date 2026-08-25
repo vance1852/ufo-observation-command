@@ -42,9 +42,15 @@ func (r *ExpirationReconciler) Reconcile(ctx context.Context, now time.Time) err
 		r.metrics.RecordFailure()
 		return err
 	}
+	// Tasks that could not be cleared stayed in their processable stage rather
+	// than advancing the lifecycle; surface them as failures so the run is not
+	// reported as a clean reconciliation.
+	if result.Failed > 0 {
+		r.metrics.RecordFailure()
+	}
 	r.metrics.RecordDue(result.Marked)
 	if result.Marked > 0 {
-		r.logger.Info("expired recovery_jobs reconciled", "scanned", result.Scanned, "marked", result.Marked)
+		r.logger.Info("expired recovery_jobs reconciled", "scanned", result.Scanned, "marked", result.Marked, "failed", result.Failed)
 	}
 	return nil
 }
