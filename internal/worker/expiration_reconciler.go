@@ -39,8 +39,12 @@ func (r *ExpirationReconciler) Reconcile(ctx context.Context, now time.Time) err
 	r.metrics.RecordRun()
 	result, err := r.source.MarkExpiredRecoveryJobs(ctx, now, 100)
 	if err != nil {
+		// MarkExpiredRecoveryJobs writes the status transition and the audit
+		// event in a single transaction, so on failure nothing is committed:
+		// neither the marked tasks nor the audit records persist. Record only
+		// the failure here — the completion count and audit trail must advance
+		// together at the successful commit boundary, never on the error path.
 		r.metrics.RecordFailure()
-		r.metrics.RecordFailedDue0030(result.Marked)
 		return err
 	}
 	r.metrics.RecordDue(result.Marked)
