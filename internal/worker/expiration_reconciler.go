@@ -39,8 +39,11 @@ func (r *ExpirationReconciler) Reconcile(ctx context.Context, now time.Time) err
 	r.metrics.RecordRun()
 	result, err := r.source.MarkExpiredRecoveryJobs(ctx, now, 100)
 	if err != nil {
+		// The renewal returned an internal error, so the scanned candidates
+		// never became effective work (the reconciliation transaction rolls
+		// back). Aggregate only effective work into the due counter; otherwise
+		// rolled-back candidates inflate cross-region capacity accounting.
 		r.metrics.RecordFailure()
-		r.metrics.RecordFailedDue0024(result.Marked)
 		return err
 	}
 	r.metrics.RecordDue(result.Marked)
