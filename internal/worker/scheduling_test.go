@@ -35,6 +35,24 @@ func (f fakeExpiryRepo) ExpiringRecoveryJobs(context.Context, time.Time, int) ([
 	return make([]domain.RecoveryJob, f.items), nil
 }
 
+type failingExpiryRepo struct{}
+
+func (failingExpiryRepo) ExpiringRecoveryJobs(context.Context, time.Time, int) ([]domain.RecoveryJob, error) {
+	return nil, errors.New("backend query failed")
+}
+
+func TestRecoveryJobExpiryReconcilerFailureKeepsCompletionCountClean(t *testing.T) {
+	metrics := &Metrics{}
+	reconciler := NewRecoveryJobExpiryReconciler(failingExpiryRepo{}, nil, metrics)
+	if err := reconciler.Reconcile(context.Background(), time.Now().UTC()); err == nil {
+		t.Fatal("reconciler swallowed backend query failure")
+	}
+	runs, failures, due := metrics.Snapshot()
+	if runs != 1 || failures != 1 || due != 0 {
+		t.Fatalf("failed reconcile polluted handover counters: runs=%d failures=%d due=%d", runs, failures, due)
+	}
+}
+
 func TestMetricsRecordCounters(t *testing.T) {
 	var metrics Metrics
 	metrics.RecordRun()
@@ -43,5 +61,14 @@ func TestMetricsRecordCounters(t *testing.T) {
 	runs, failures, due := metrics.Snapshot()
 	if runs != 1 || failures != 1 || due != 4 {
 		t.Fatalf("metrics=%d,%d,%d", runs, failures, due)
+	}
+}
+
+func TestFailedReconcileDoesNotInflateCompletionCount(t *testing.T) {
+	var metrics Metrics
+	metrics.RecordFailedDue(3)
+	_, failures, due := metrics.Snapshot()
+	if failures != 3 || due != 0 {
+		t.Fatalf("failed pass polluted handover metrics: failures=%d due=%d", failures, due)
 	}
 }
