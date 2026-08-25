@@ -42,3 +42,40 @@ func TestExpirationReconcilerRejectsMissingSourceAndCancelledContext(t *testing.
 		t.Fatalf("error=%v", err)
 	}
 }
+
+// A transaction conflict during the expiration scan must increment the failure
+// counter and must not leak the failed items into the completion counter.
+func TestExpirationReconcilerConflictDoesNotInflateCompletionCount(t *testing.T) {
+	metrics := &Metrics{}
+	source := expirationSourceFunc(func(context.Context, time.Time, int) (repository.ReconcileResult, error) {
+		return repository.ReconcileResult{Scanned: 3, Marked: 0}, errors.New("serialization failure")
+	})
+	reconciler := NewExpirationReconciler(source, nil, metrics)
+	if err := reconciler.Reconcile(context.Background(), time.Now().UTC()); err == nil {
+		t.Fatal("conflict was swallowed")
+	}
+	runs, failures, due := metrics.Snapshot()
+	if runs != 1 || failures != 1 || due != 0 {
+		t.Fatalf("metrics=%d,%d,%d", runs, failures, due)
+	}
+}
+
+// After a restart, residual error counts from a prior conflict-disrupted scan
+// are cleared so the recovered statistics become trustworthy again.
+func TestExpirationReconcilerClearsResidualErrorCountOnRestart(t *testing.T) {
+	metrics := &Metrics{}
+	metrics.RecordRun()
+	metrics.RecordFailure()
+	metrics.RecordDue(5)
+	source := expirationSourceFunc(func(context.Context, time.Time, int) (repository.ReconcileResult, error) {
+		return repository.ReconcileResult{Scanned: 1, Marked: 1}, nil
+	})
+	reconciler := NewExpirationReconciler(source, nil, metrics)
+	if err := reconciler.Reconcile(context.Background(), time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	runs, failures, due := metrics.Snapshot()
+	if runs != 1 || failures != 0 || due != 1 {
+		t.Fatalf("metrics=%d,%d,%d", runs, failures, due)
+	}
+}

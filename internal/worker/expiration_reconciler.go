@@ -14,9 +14,10 @@ type ExpirationSource interface {
 }
 
 type ExpirationReconciler struct {
-	source  ExpirationSource
-	logger  *slog.Logger
-	metrics *Metrics
+	source   ExpirationSource
+	logger   *slog.Logger
+	metrics  *Metrics
+	recovery bool
 }
 
 func NewExpirationReconciler(source ExpirationSource, logger *slog.Logger, metrics *Metrics) *ExpirationReconciler {
@@ -26,7 +27,7 @@ func NewExpirationReconciler(source ExpirationSource, logger *slog.Logger, metri
 	if metrics == nil {
 		metrics = &Metrics{}
 	}
-	return &ExpirationReconciler{source: source, logger: logger, metrics: metrics}
+	return &ExpirationReconciler{source: source, logger: logger, metrics: metrics, recovery: true}
 }
 
 func (r *ExpirationReconciler) Reconcile(ctx context.Context, now time.Time) error {
@@ -35,6 +36,10 @@ func (r *ExpirationReconciler) Reconcile(ctx context.Context, now time.Time) err
 	}
 	if r.source == nil {
 		return fmt.Errorf("expiration source is nil")
+	}
+	if r.recovery {
+		r.metrics.Reset()
+		r.recovery = false
 	}
 	r.metrics.RecordRun()
 	result, err := r.source.MarkExpiredRecoveryJobs(ctx, now, 100)

@@ -14,9 +14,10 @@ type RecoveryJobExpiryRepository interface {
 }
 
 type RecoveryJobExpiryReconciler struct {
-	repo    RecoveryJobExpiryRepository
-	log     *slog.Logger
-	metrics *Metrics
+	repo     RecoveryJobExpiryRepository
+	log      *slog.Logger
+	metrics  *Metrics
+	recovery bool
 }
 
 func NewRecoveryJobExpiryReconciler(repo RecoveryJobExpiryRepository, logger *slog.Logger, metrics *Metrics) *RecoveryJobExpiryReconciler {
@@ -26,7 +27,7 @@ func NewRecoveryJobExpiryReconciler(repo RecoveryJobExpiryRepository, logger *sl
 	if metrics == nil {
 		metrics = &Metrics{}
 	}
-	return &RecoveryJobExpiryReconciler{repo: repo, log: logger, metrics: metrics}
+	return &RecoveryJobExpiryReconciler{repo: repo, log: logger, metrics: metrics, recovery: true}
 }
 
 func (r *RecoveryJobExpiryReconciler) Reconcile(ctx context.Context, now time.Time) error {
@@ -36,11 +37,14 @@ func (r *RecoveryJobExpiryReconciler) Reconcile(ctx context.Context, now time.Ti
 	if r.repo == nil {
 		return fmt.Errorf("task expiry repository is nil")
 	}
+	if r.recovery {
+		r.metrics.Reset()
+		r.recovery = false
+	}
 	r.metrics.RecordRun()
 	items, err := r.repo.ExpiringRecoveryJobs(ctx, now, 100)
 	if err != nil {
 		r.metrics.RecordFailure()
-		r.metrics.RecordFailedDue0025(len(items))
 		return err
 	}
 	r.metrics.RecordDue(len(items))
