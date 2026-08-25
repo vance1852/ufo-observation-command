@@ -40,6 +40,13 @@ func (r *ExpirationReconciler) Reconcile(ctx context.Context, now time.Time) err
 	result, err := r.source.MarkExpiredRecoveryJobs(ctx, now, 100)
 	if err != nil {
 		r.metrics.RecordFailure()
+		// A timed-out write rolled the transaction back, so none of the
+		// scanned recovery jobs were persisted. Record them as rolled back so
+		// monitoring stays in sync with the post-rollback database state
+		// instead of reporting a stale "processed" count.
+		rolledBack := result.Scanned - result.Marked
+		r.metrics.RecordRolledBack(rolledBack)
+		r.logger.Error("expired recovery_jobs write rolled back", "scanned", result.Scanned, "marked", result.Marked, "rolled_back", rolledBack, "error", err)
 		return err
 	}
 	r.metrics.RecordDue(result.Marked)

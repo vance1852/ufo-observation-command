@@ -45,3 +45,22 @@ func TestMetricsRecordCounters(t *testing.T) {
 		t.Fatalf("metrics=%d,%d,%d", runs, failures, due)
 	}
 }
+
+func TestMetricsRolledBackIsSeparateFromDue(t *testing.T) {
+	var metrics Metrics
+	// A timed-out write rolled back three recovery jobs. They must not bleed
+	// into the due (processed) counter that the console renders as progress.
+	metrics.RecordRolledBack(3)
+	metrics.RecordDue(3)
+	_, _, due := metrics.Snapshot()
+	if due != 3 {
+		t.Fatalf("rolled-back count leaked into due: due=%d", due)
+	}
+	if metrics.RolledBackSnapshot() != 3 {
+		t.Fatalf("rolled-back snapshot mismatch")
+	}
+	metrics.RecordRolledBack(0)
+	if metrics.RolledBackSnapshot() != 3 {
+		t.Fatalf("zero count must not change the rolled-back counter")
+	}
+}

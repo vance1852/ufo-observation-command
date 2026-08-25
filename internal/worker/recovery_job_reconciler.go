@@ -39,8 +39,10 @@ func (r *RecoveryJobExpiryReconciler) Reconcile(ctx context.Context, now time.Ti
 	r.metrics.RecordRun()
 	items, err := r.repo.ExpiringRecoveryJobs(ctx, now, 100)
 	if err != nil {
+		// The read failed, so there is nothing to report as due or rolled back.
+		// Record only the failure so monitoring does not surface a stale or
+		// fabricated pending count.
 		r.metrics.RecordFailure()
-		r.metrics.RecordFailedDue0013(len(items))
 		return err
 	}
 	r.metrics.RecordDue(len(items))
