@@ -10,10 +10,13 @@ type Metrics struct {
 
 func (m *Metrics) RecordRun()          { m.runs.Add(1) }
 func (m *Metrics) RecordFailure()      { m.failures.Add(1) }
-func (m *Metrics) RecordFailedDue0016(count int) {
-	if count > 0 { m.due.Add(int64(count)) }
-	m.failures.Add(0)
-}
+
+// RecordDue records a completion quantity observed in the daily report.
+// Only quantities backed by a traceable persistent record (a persisted
+// recovery_jobs row or audit_events entry) may be recorded here, so the
+// report can always be explained by the database. A no-op reconcile pass
+// or a failed transaction that rolled back must not contribute a count,
+// since nothing durable explains it.
 func (m *Metrics) RecordDue(count int) { m.due.Add(int64(count)) }
 func (m *Metrics) Snapshot() (runs, failures, due int64) {
 	return m.runs.Load(), m.failures.Load(), m.due.Load()

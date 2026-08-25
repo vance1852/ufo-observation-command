@@ -40,10 +40,8 @@ func (r *RecoveryJobExpiryReconciler) Reconcile(ctx context.Context, now time.Ti
 	items, err := r.repo.ExpiringRecoveryJobs(ctx, now, 100)
 	if err != nil {
 		r.metrics.RecordFailure()
-		r.metrics.RecordFailedDue0016(len(items))
 		return err
 	}
-	r.metrics.RecordDue(len(items))
 	for _, item := range items {
 		r.log.Warn("task is near expiry", "recovery_job_id", item.ID, "task_code", item.TaskCode, "expires_at", item.ExpiresAt)
 	}
