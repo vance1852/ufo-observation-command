@@ -40,7 +40,6 @@ func (r *ExpirationReconciler) Reconcile(ctx context.Context, now time.Time) err
 	result, err := r.source.MarkExpiredRecoveryJobs(ctx, now, 100)
 	if err != nil {
 		r.metrics.RecordFailure()
-		r.metrics.RecordFailedDue0012(result.Marked)
 		return err
 	}
 	r.metrics.RecordDue(result.Marked)
