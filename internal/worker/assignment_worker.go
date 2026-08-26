@@ -40,11 +40,16 @@ func (w *AssignmentWorker) Run(ctx context.Context) error {
 		if w.source != nil {
 			count, err := w.source.ActivateDue(ctx, time.Now().UTC(), 100)
 			w.metrics.RecordRun()
-			if err != nil && ctx.Err() == nil {
+			switch {
+			case ctx.Err() != nil:
+				// The run was cancelled (e.g. the worker pool was briefly
+				// unavailable). Whatever count the source returned was not
+				// committed as durable work, so it must not be reported as
+				// completed progress.
+			case err != nil:
 				w.metrics.RecordFailure()
-				w.metrics.RecordFailedDue0017(count)
 				w.logger.Error("assignment activation failed", "error", err)
-			} else {
+			default:
 				w.metrics.RecordDue(count)
 			}
 		}
