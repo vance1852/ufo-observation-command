@@ -49,7 +49,7 @@ func run() error {
 	repo := repository.NewPostgres(p)
 	svc := service.New(repo)
 	api := httpapi.New(svc, p.Ping).WithConsole(console.NewStore(p))
-	server := &http.Server{Addr: cfg.Addr, Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: cfg.Addr, Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	workerCtx, cancelWorkers := context.WithCancel(ctx)
 	defer cancelWorkers()
 	workers := []struct {

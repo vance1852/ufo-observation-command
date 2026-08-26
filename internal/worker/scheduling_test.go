@@ -45,3 +45,30 @@ func TestMetricsRecordCounters(t *testing.T) {
 		t.Fatalf("metrics=%d,%d,%d", runs, failures, due)
 	}
 }
+
+func TestMetricsDueStaysStableAcrossFailures(t *testing.T) {
+	var metrics Metrics
+	for range 5 {
+		metrics.RecordRun()
+		metrics.RecordFailure()
+	}
+	runs, failures, due := metrics.Snapshot()
+	if runs != 5 || failures != 5 || due != 0 {
+		t.Fatalf("repeated failures inflated due: runs=%d failures=%d due=%d", runs, failures, due)
+	}
+	metrics.RecordDue(2)
+	_, _, due = metrics.Snapshot()
+	if due != 2 {
+		t.Fatalf("due=%d want=2", due)
+	}
+}
+
+func TestMetricsRecordDueIgnoresNonPositive(t *testing.T) {
+	var metrics Metrics
+	metrics.RecordDue(0)
+	metrics.RecordDue(-3)
+	_, _, due := metrics.Snapshot()
+	if due != 0 {
+		t.Fatalf("non-positive due leaked: due=%d", due)
+	}
+}

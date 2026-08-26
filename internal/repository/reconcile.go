@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -41,6 +42,7 @@ func (p *Postgres) MarkExpiredRecoveryJobs(ctx context.Context, now time.Time, l
 	}
 	rows.Close()
 	result := ReconcileResult{Scanned: len(ids)}
+	runID := fmt.Sprintf("worker:task-expiration:%s", uuid.NewString())
 	for _, id := range ids {
 		updated, err := tx.Exec(ctx, `UPDATE recovery_jobs SET status='rejected',version=version+1 WHERE id=$1 AND status IN ('queued','completed','activation_pending','accepted','in_progress')`, id)
 		if err != nil {
@@ -50,7 +52,8 @@ func (p *Postgres) MarkExpiredRecoveryJobs(ctx context.Context, now time.Time, l
 			result.Failed++
 			continue
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO audit_events(id,request_id,object_type,object_id,action,outcome,detail) VALUES ($1,$2,'task',$3,'expire','success','{}'::jsonb)`, uuid.NewString(), "worker:task-expiration", id); err != nil {
+		detail, _ := json.Marshal(map[string]any{"run_id": runID, "expired_at": now.UTC().Format(time.RFC3339Nano)})
+		if _, err := tx.Exec(ctx, `INSERT INTO audit_events(id,request_id,object_type,object_id,action,outcome,detail) VALUES ($1,$2,'task',$3,'expire','success',$4::jsonb)`, uuid.NewString(), runID, id, detail); err != nil {
 			return ReconcileResult{}, fmt.Errorf("audit expired task %s: %w", id, err)
 		}
 		result.Marked++
